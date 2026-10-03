@@ -96,3 +96,28 @@ async def test_rate_limit_exhaustion():
     async with WooCommerceClient(settings) as client:
         with pytest.raises(RateLimitError):
             await client.list_orders()
+
+
+@pytest.mark.asyncio
+async def test_settings_read_environment_at_instantiation(monkeypatch):
+    monkeypatch.setenv("WOOCOMMERCE_MODE", "live")
+    monkeypatch.setenv("WOOCOMMERCE_BASE_URL", "https://store.example.test")
+    monkeypatch.setenv("WOOCOMMERCE_CONSUMER_KEY", "ck_env")
+    monkeypatch.setenv("WOOCOMMERCE_CONSUMER_SECRET", "cs_env")
+
+    settings = Settings()
+
+    assert settings.mode == "live"
+    assert settings.base_url == "https://store.example.test"
+    assert settings.consumer_key == "ck_env"
+    assert settings.consumer_secret == "cs_env"
+    assert settings.api_root == "https://store.example.test/wp-json/wc/v3"
+
+
+@pytest.mark.asyncio
+async def test_mock_status_filter():
+    async with WooCommerceClient(Settings(mode="mock")) as client:
+        items, meta = await client.list_orders(status="completed")
+
+    assert [item["id"] for item in items] == [1002]
+    assert meta["total"] == 1
