@@ -155,7 +155,7 @@ docker compose config
 docker compose build
 ```
 
-The default Compose configuration runs in mock mode, so no store credentials are required.
+The default Compose configuration runs in mock mode, so no store credentials are required. If a local `.env` sets live-mode variables, Compose passes them into the container without baking them into the image.
 
 ## Assignment fit
 
