@@ -2,6 +2,7 @@ import httpx
 import pytest
 import respx
 import time
+from urllib.parse import parse_qs, urlsplit
 
 from woocommerce_connector.client import WooCommerceClient
 from woocommerce_connector.config import Settings
