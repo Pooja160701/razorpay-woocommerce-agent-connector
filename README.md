@@ -98,6 +98,8 @@ get_product(product_id=501)
 
 ## Live WooCommerce mode
 
+The connector supports both a real HTTPS WooCommerce store and a local HTTP WooCommerce installation. WooCommerce requires one-legged OAuth 1.0a for non-SSL REST API requests; HTTPS can use Basic Auth. The local `http://pooja` setup therefore uses OAuth automatically.
+
 Set these environment variables:
 
 ```env
