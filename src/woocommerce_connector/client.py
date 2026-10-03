@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import time
+import uuid
 from typing import Any
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -19,22 +25,14 @@ class WooCommerceClient:
         self._http: httpx.AsyncClient | None = None
 
     async def __aenter__(self):
-        self._http = httpx.AsyncClient(
-            timeout=self.settings.timeout_seconds,
-            transport=self._transport,
-        )
+        self._http = httpx.AsyncClient(timeout=self.settings.timeout_seconds, transport=self._transport)
         return self
 
     async def __aexit__(self, *_exc):
         if self._http:
             await self._http.aclose()
 
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        params: dict[str, Any] | None = None,
-    ) -> tuple[Any, httpx.Headers]:
+    async def _request(self, method: str, path: str, params: dict[str, Any] | None = None) -> tuple[Any, httpx.Headers]:
         if self.settings.mode == "mock":
             raise ConnectorError("Mock requests should use the mock data path")
         if self._http is None:
@@ -43,95 +41,66 @@ class WooCommerceClient:
             raise AuthenticationError("WooCommerce API credentials are not configured")
 
         url = f"{self.settings.api_root}/{path.lstrip('/')}"
-        auth = (self.settings.consumer_key, self.settings.consumer_secret)
-        last_error: Exception | None = None
+        request_params = dict(params or {})
+        auth = None
+        if _is_https(url):
+            auth = (self.settings.consumer_key, self.settings.consumer_secret)
+        else:
+            request_params.update(_oauth_query_params(
+                method, url, request_params,
+                self.settings.consumer_key, self.settings.consumer_secret
+            ))
 
+        last_error: Exception | None = None
         for attempt in range(self.settings.max_retries + 1):
             try:
-                response = await self._http.request(
-                    method,
-                    url,
-                    params=params,
-                    auth=auth,
-                )
-
+                response = await self._http.request(method, url, params=request_params, auth=auth)
                 if response.status_code in {401, 403}:
                     raise AuthenticationError("WooCommerce rejected the API credentials")
-
                 if response.status_code in RETRYABLE_STATUS_CODES:
                     if attempt >= self.settings.max_retries:
                         if response.status_code == 429:
                             raise RateLimitError("WooCommerce rate limit persisted after retries")
-                        raise ProviderError(
-                            f"WooCommerce returned HTTP {response.status_code}"
-                        )
-
+                        raise ProviderError(f"WooCommerce returned HTTP {response.status_code}")
                     retry_after = response.headers.get("Retry-After")
                     delay = _retry_delay(retry_after, self.settings.backoff_factor, attempt)
                     await asyncio.sleep(min(max(delay, 0), 30))
                     continue
-
                 if response.is_error:
                     raise ProviderError(
-                        f"WooCommerce returned HTTP {response.status_code}: "
-                        f"{_error_detail(response)}"
+                        f"WooCommerce returned HTTP {response.status_code}: {_error_detail(response)}"
                     )
-
                 try:
                     return response.json(), response.headers
                 except ValueError as exc:
                     raise ProviderError("WooCommerce returned a non-JSON response") from exc
-
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_error = exc
                 if attempt >= self.settings.max_retries:
                     raise ProviderError("WooCommerce request failed after retries") from exc
-                await asyncio.sleep(
-                    min(self.settings.backoff_factor * (2**attempt), 30)
-                )
-
+                await asyncio.sleep(min(self.settings.backoff_factor * (2**attempt), 30))
         raise ProviderError("WooCommerce request failed") from last_error
 
-    async def list_orders(
-        self,
-        page: int = 1,
-        per_page: int = 20,
-        status: str | None = None,
-    ):
+    async def list_orders(self, page: int = 1, per_page: int = 20, status: str | None = None):
         page, per_page = _page_args(page, per_page)
         if self.settings.mode == "mock":
             items = [x for x in ORDERS if not status or x["status"] == status]
             return _paginate(items, page, per_page)
-
         params: dict[str, Any] = {"page": page, "per_page": per_page}
         if status:
             params["status"] = status
         data, headers = await self._request("GET", "orders", params)
         return _with_headers(data, headers)
 
-    async def search_orders(
-        self,
-        query: str,
-        page: int = 1,
-        per_page: int = 20,
-    ):
+    async def search_orders(self, query: str, page: int = 1, per_page: int = 20):
         if not query.strip():
             raise ConnectorError("Search query must not be empty")
-
         page, per_page = _page_args(page, per_page)
-
         if self.settings.mode == "mock":
             needle = query.lower()
-            items = [
-                x
-                for x in ORDERS
-                if needle in str(x["id"]).lower()
-                or needle in x["billing"]["email"].lower()
-            ]
+            items = [x for x in ORDERS if needle in str(x["id"]).lower() or needle in x["billing"]["email"].lower()]
             return _paginate(items, page, per_page)
-
-        params = {"search": query, "page": page, "per_page": per_page}
-        data, headers = await self._request("GET", "orders", params)
+        data, headers = await self._request("GET", "orders", {"search": query, "page": page, "per_page": per_page})
         return _with_headers(data, headers)
 
     async def get_order(self, order_id: int):
@@ -142,40 +111,20 @@ class WooCommerceClient:
 
     async def list_products(self, page: int = 1, per_page: int = 20):
         page, per_page = _page_args(page, per_page)
-
         if self.settings.mode == "mock":
             return _paginate(PRODUCTS, page, per_page)
-
-        data, headers = await self._request(
-            "GET",
-            "products",
-            {"page": page, "per_page": per_page},
-        )
+        data, headers = await self._request("GET", "products", {"page": page, "per_page": per_page})
         return _with_headers(data, headers)
 
-    async def search_products(
-        self,
-        query: str,
-        page: int = 1,
-        per_page: int = 20,
-    ):
+    async def search_products(self, query: str, page: int = 1, per_page: int = 20):
         if not query.strip():
             raise ConnectorError("Search query must not be empty")
-
         page, per_page = _page_args(page, per_page)
-
         if self.settings.mode == "mock":
             needle = query.lower()
-            items = [
-                x
-                for x in PRODUCTS
-                if needle in x["name"].lower()
-                or needle in x.get("sku", "").lower()
-            ]
+            items = [x for x in PRODUCTS if needle in x["name"].lower() or needle in x.get("sku", "").lower()]
             return _paginate(items, page, per_page)
-
-        params = {"search": query, "page": page, "per_page": per_page}
-        data, headers = await self._request("GET", "products", params)
+        data, headers = await self._request("GET", "products", {"search": query, "page": page, "per_page": per_page})
         return _with_headers(data, headers)
 
     async def get_product(self, product_id: int):
@@ -183,6 +132,35 @@ class WooCommerceClient:
             return _get_mock(PRODUCTS, product_id, "product")
         data, _ = await self._request("GET", f"products/{product_id}")
         return data
+
+
+def _is_https(url: str) -> bool:
+    return urlsplit(url).scheme.lower() == "https"
+
+
+def _oauth_query_params(method: str, url: str, params: dict[str, Any], consumer_key: str, consumer_secret: str) -> dict[str, str]:
+    oauth = {
+        "oauth_consumer_key": consumer_key,
+        "oauth_nonce": uuid.uuid4().hex,
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": str(int(time.time())),
+    }
+    signing_params = {str(k): str(v) for k, v in params.items()}
+    signing_params.update(oauth)
+    encoded = sorted((_quote(str(k)), _quote(str(v))) for k, v in signing_params.items())
+    normalized = "&".join(f"{k}={v}" for k, v in encoded)
+    parts = urlsplit(url)
+    base_url = f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path or '/'}"
+    base_string = "&".join(["GET" if method.upper() == "GET" else method.upper(), _quote(base_url), _quote(normalized)])
+    signing_key = f"{_quote(consumer_secret)}&"
+    oauth["oauth_signature"] = base64.b64encode(
+        hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
+    ).decode("ascii")
+    return oauth
+
+
+def _quote(value: str) -> str:
+    return quote(value, safe="-._~")
 
 
 def _retry_delay(retry_after: str | None, backoff_factor: float, attempt: int) -> float:
@@ -202,27 +180,14 @@ def _page_args(page: int, per_page: int) -> tuple[int, int]:
     return page, per_page
 
 
-def _paginate(
-    items: list[dict[str, Any]],
-    page: int,
-    per_page: int,
-):
+def _paginate(items: list[dict[str, Any]], page: int, per_page: int):
     total = len(items)
     start = (page - 1) * per_page
-    return items[start : start + per_page], {
-        "total": total,
-        "total_pages": (total + per_page - 1) // per_page if total else 0,
-    }
+    return items[start:start + per_page], {"total": total, "total_pages": (total + per_page - 1) // per_page if total else 0}
 
 
-def _with_headers(
-    data: list[dict[str, Any]],
-    headers: httpx.Headers,
-):
-    return data, {
-        "total": _header_int(headers, "X-WP-Total"),
-        "total_pages": _header_int(headers, "X-WP-TotalPages"),
-    }
+def _with_headers(data: list[dict[str, Any]], headers: httpx.Headers):
+    return data, {"total": _header_int(headers, "X-WP-Total"), "total_pages": _header_int(headers, "X-WP-TotalPages")}
 
 
 def _header_int(headers: httpx.Headers, name: str) -> int | None:
@@ -242,8 +207,6 @@ def _error_detail(response: httpx.Response) -> str:
         payload = response.json()
     except ValueError:
         return response.text[:200]
-
     if isinstance(payload, dict):
         return str(payload.get("message") or payload.get("code") or payload)[:200]
-
     return str(payload)[:200]
