@@ -121,3 +121,33 @@ async def test_mock_status_filter():
 
     assert [item["id"] for item in items] == [1002]
     assert meta["total"] == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_live_request_uses_api_key_auth():
+    settings = Settings(
+        mode="live",
+        base_url="https://shop.example.test",
+        consumer_key="ck_test",
+        consumer_secret="cs_test",
+    )
+    route = respx.get(
+        "https://shop.example.test/wp-json/wc/v3/orders",
+        params={"page": "1", "per_page": "20"},
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            headers={"X-WP-Total": "1", "X-WP-TotalPages": "1"},
+            json=[{"id": 1001, "status": "processing"}],
+        )
+    )
+
+    async with WooCommerceClient(settings) as client:
+        items, meta = await client.list_orders()
+
+    assert route.called
+    request = route.calls.last.request
+    assert request.headers["Authorization"].startswith("Basic ")
+    assert items[0]["id"] == 1001
+    assert meta["total"] == 1
