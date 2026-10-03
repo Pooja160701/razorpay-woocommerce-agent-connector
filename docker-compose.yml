@@ -1,0 +1,7 @@
+services:
+  connector:
+    build: .
+    environment:
+      WOOCOMMERCE_MODE: mock
+    stdin_open: true
+    tty: true
