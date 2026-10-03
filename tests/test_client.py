@@ -17,7 +17,12 @@ async def test_mock_order_search():
 
 @pytest.mark.asyncio
 async def test_live_auth_error():
-    settings = Settings(mode="live", base_url="https://shop.example.test", consumer_key="", consumer_secret="")
+    settings = Settings(
+        mode="live",
+        base_url="https://shop.example.test",
+        consumer_key="",
+        consumer_secret="",
+    )
     async with WooCommerceClient(settings) as client:
         with pytest.raises(AuthenticationError):
             await client.list_orders()
@@ -26,19 +31,68 @@ async def test_live_auth_error():
 @pytest.mark.asyncio
 @respx.mock
 async def test_retry_after_rate_limit():
-    settings = Settings(mode="live", base_url="https://shop.example.test", consumer_key="ck_test", consumer_secret="cs_test", max_retries=1, backoff_factor=0)
-    route = respx.get("https://shop.example.test/wp-json/wc/v3/orders").mock(side_effect=[httpx.Response(429, headers={"Retry-After":"0"}, json={"message":"slow down"}), httpx.Response(200, json=[{"id":1,"status":"processing"}])])
+    settings = Settings(
+        mode="live",
+        base_url="https://shop.example.test",
+        consumer_key="ck_test",
+        consumer_secret="cs_test",
+        max_retries=1,
+        backoff_factor=0,
+    )
+    route = respx.get(
+        "https://shop.example.test/wp-json/wc/v3/orders"
+    ).mock(
+        side_effect=[
+            httpx.Response(
+                429,
+                headers={"Retry-After": "0"},
+                json={"message": "slow down"},
+            ),
+            httpx.Response(
+                200,
+                headers={"X-WP-Total": "4", "X-WP-TotalPages": "2"},
+                json=[{"id": 1, "status": "processing"}],
+            ),
+        ]
+    )
+
     async with WooCommerceClient(settings) as client:
-        items, _ = await client.list_orders()
+        items, meta = await client.list_orders()
+
     assert route.call_count == 2
     assert items[0]["id"] == 1
+    assert meta["total"] == 4
+    assert meta["total_pages"] == 2
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_rate_limit_exhaustion():
-    settings = Settings(mode="live", base_url="https://shop.example.test", consumer_key="ck_test", consumer_secret="cs_test", max_retries=1, backoff_factor=0)
-    respx.get("https://shop.example.test/wp-json/wc/v3/orders").mock(side_effect=[httpx.Response(429, headers={"Retry-After":"0"}, json={"message":"slow down"}), httpx.Response(429, headers={"Retry-After":"0"}, json={"message":"still slow"})])
+    settings = Settings(
+        mode="live",
+        base_url="https://shop.example.test",
+        consumer_key="ck_test",
+        consumer_secret="cs_test",
+        max_retries=1,
+        backoff_factor=0,
+    )
+    respx.get(
+        "https://shop.example.test/wp-json/wc/v3/orders"
+    ).mock(
+        side_effect=[
+            httpx.Response(
+                429,
+                headers={"Retry-After": "0"},
+                json={"message": "slow down"},
+            ),
+            httpx.Response(
+                429,
+                headers={"Retry-After": "0"},
+                json={"message": "still slow"},
+            ),
+        ]
+    )
+
     async with WooCommerceClient(settings) as client:
         with pytest.raises(RateLimitError):
             await client.list_orders()
