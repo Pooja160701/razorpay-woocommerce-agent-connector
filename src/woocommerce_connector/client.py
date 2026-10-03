@@ -67,11 +67,7 @@ class WooCommerceClient:
                         )
 
                     retry_after = response.headers.get("Retry-After")
-                    delay = (
-                        float(retry_after)
-                        if retry_after
-                        else self.settings.backoff_factor * (2**attempt)
-                    )
+                    delay = _retry_delay(retry_after, self.settings.backoff_factor, attempt)
                     await asyncio.sleep(min(max(delay, 0), 30))
                     continue
 
@@ -187,6 +183,15 @@ class WooCommerceClient:
             return _get_mock(PRODUCTS, product_id, "product")
         data, _ = await self._request("GET", f"products/{product_id}")
         return data
+
+
+def _retry_delay(retry_after: str | None, backoff_factor: float, attempt: int) -> float:
+    if retry_after:
+        try:
+            return float(retry_after)
+        except ValueError:
+            pass
+    return backoff_factor * (2**attempt)
 
 
 def _page_args(page: int, per_page: int) -> tuple[int, int]:
