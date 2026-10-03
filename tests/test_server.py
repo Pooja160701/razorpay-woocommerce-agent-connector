@@ -3,6 +3,11 @@ import pytest
 from woocommerce_connector import server
 
 
+@pytest.fixture(autouse=True)
+def use_mock_mode(monkeypatch):
+    monkeypatch.setenv("WOOCOMMERCE_MODE", "mock")
+
+
 @pytest.mark.asyncio
 async def test_list_orders_tool():
     result = await server.list_orders(page=1, per_page=2)
