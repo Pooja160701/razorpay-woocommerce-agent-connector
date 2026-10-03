@@ -151,3 +151,38 @@ async def test_live_request_uses_api_key_auth():
     assert request.headers["Authorization"].startswith("Basic ")
     assert items[0]["id"] == 1001
     assert meta["total"] == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_http_auth_uses_oauth_parameters(monkeypatch):
+    monkeypatch.setattr(time, "time", lambda: 1700000000)
+    settings = Settings(
+        mode="live",
+        base_url="http://pooja",
+        consumer_key="a",
+        consumer_secret="b",
+        max_retries=0,
+    )
+    route = respx.get("http://pooja/wp-json/wc/v3/products").mock(
+        return_value=httpx.Response(
+            200,
+            headers={"X-WP-Total": "1", "X-WP-TotalPages": "1"},
+            json=[{"id": 501, "name": "Test Product"}],
+        )
+    )
+
+    async with WooCommerceClient(settings) as client:
+        items, meta = await client.list_products()
+
+    request = route.calls.last.request
+    query = parse_qs(urlsplit(str(request.url)).query)
+    assert route.called
+    assert "Authorization" not in request.headers
+    assert query["oauth_consumer_key"] == ["a"]
+    assert query["oauth_signature_method"] == ["HMAC-SHA1"]
+    assert query["oauth_timestamp"] == ["1700000000"]
+    assert query["oauth_nonce"][0]
+    assert query["oauth_signature"][0]
+    assert items[0]["id"] == 501
+    assert meta["total"] == 1
