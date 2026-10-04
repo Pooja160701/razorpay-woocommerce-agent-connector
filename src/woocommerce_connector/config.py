@@ -1,20 +1,16 @@
 from dataclasses import dataclass, field
 import os
-
 from dotenv import load_dotenv
 
 load_dotenv()
-
 
 def _int(name: str, default: int) -> int:
     value = os.getenv(name)
     return int(value) if value else default
 
-
 def _float(name: str, default: float) -> float:
     value = os.getenv(name)
     return float(value) if value else default
-
 
 @dataclass(frozen=True)
 class Settings:

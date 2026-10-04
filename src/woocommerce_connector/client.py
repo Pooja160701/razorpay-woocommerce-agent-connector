@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import asyncio
 import base64
 import hashlib
@@ -8,15 +7,12 @@ import time
 import uuid
 from typing import Any
 from urllib.parse import quote, urlsplit
-
 import httpx
-
 from .config import Settings
 from .errors import AuthenticationError, ConnectorError, ProviderError, RateLimitError
 from .mock_data import ORDERS, PRODUCTS
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
-
 
 class WooCommerceClient:
     def __init__(self, settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None):
@@ -133,10 +129,8 @@ class WooCommerceClient:
         data, _ = await self._request("GET", f"products/{product_id}")
         return data
 
-
 def _is_https(url: str) -> bool:
     return urlsplit(url).scheme.lower() == "https"
-
 
 def _oauth_query_params(method: str, url: str, params: dict[str, Any], consumer_key: str, consumer_secret: str) -> dict[str, str]:
     oauth = {
@@ -158,10 +152,8 @@ def _oauth_query_params(method: str, url: str, params: dict[str, Any], consumer_
     ).decode("ascii")
     return oauth
 
-
 def _quote(value: str) -> str:
     return quote(value, safe="-._~")
-
 
 def _retry_delay(retry_after: str | None, backoff_factor: float, attempt: int) -> float:
     if retry_after:
@@ -171,7 +163,6 @@ def _retry_delay(retry_after: str | None, backoff_factor: float, attempt: int) -
             pass
     return backoff_factor * (2**attempt)
 
-
 def _page_args(page: int, per_page: int) -> tuple[int, int]:
     if page < 1:
         raise ConnectorError("page must be at least 1")
@@ -179,28 +170,23 @@ def _page_args(page: int, per_page: int) -> tuple[int, int]:
         raise ConnectorError("per_page must be between 1 and 100")
     return page, per_page
 
-
 def _paginate(items: list[dict[str, Any]], page: int, per_page: int):
     total = len(items)
     start = (page - 1) * per_page
     return items[start:start + per_page], {"total": total, "total_pages": (total + per_page - 1) // per_page if total else 0}
 
-
 def _with_headers(data: list[dict[str, Any]], headers: httpx.Headers):
     return data, {"total": _header_int(headers, "X-WP-Total"), "total_pages": _header_int(headers, "X-WP-TotalPages")}
-
 
 def _header_int(headers: httpx.Headers, name: str) -> int | None:
     value = headers.get(name)
     return int(value) if value and value.isdigit() else None
-
 
 def _get_mock(items: list[dict[str, Any]], item_id: int, label: str):
     for item in items:
         if item["id"] == item_id:
             return item
     raise ConnectorError(f"{label.capitalize()} {item_id} was not found")
-
 
 def _error_detail(response: httpx.Response) -> str:
     try:

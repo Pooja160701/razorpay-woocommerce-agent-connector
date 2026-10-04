@@ -3,11 +3,9 @@ import pytest
 import respx
 import time
 from urllib.parse import parse_qs, urlsplit
-
 from woocommerce_connector.client import WooCommerceClient
 from woocommerce_connector.config import Settings
 from woocommerce_connector.errors import AuthenticationError, RateLimitError
-
 
 @pytest.mark.asyncio
 async def test_mock_order_search():
@@ -15,7 +13,6 @@ async def test_mock_order_search():
         items, meta = await client.search_orders("maya@example.test")
     assert len(items) == 2
     assert meta["total"] == 2
-
 
 @pytest.mark.asyncio
 async def test_live_auth_error():
@@ -28,7 +25,6 @@ async def test_live_auth_error():
     async with WooCommerceClient(settings) as client:
         with pytest.raises(AuthenticationError):
             await client.list_orders()
-
 
 @pytest.mark.asyncio
 @respx.mock
@@ -66,7 +62,6 @@ async def test_retry_after_rate_limit():
     assert meta["total"] == 4
     assert meta["total_pages"] == 2
 
-
 @pytest.mark.asyncio
 @respx.mock
 async def test_rate_limit_exhaustion():
@@ -99,7 +94,6 @@ async def test_rate_limit_exhaustion():
         with pytest.raises(RateLimitError):
             await client.list_orders()
 
-
 @pytest.mark.asyncio
 async def test_settings_read_environment_at_instantiation(monkeypatch):
     monkeypatch.setenv("WOOCOMMERCE_MODE", "live")
@@ -115,7 +109,6 @@ async def test_settings_read_environment_at_instantiation(monkeypatch):
     assert settings.consumer_secret == "cs_env"
     assert settings.api_root == "https://store.example.test/wp-json/wc/v3"
 
-
 @pytest.mark.asyncio
 async def test_mock_status_filter():
     async with WooCommerceClient(Settings(mode="mock")) as client:
@@ -123,7 +116,6 @@ async def test_mock_status_filter():
 
     assert [item["id"] for item in items] == [1002]
     assert meta["total"] == 1
-
 
 @pytest.mark.asyncio
 @respx.mock
@@ -153,7 +145,6 @@ async def test_live_request_uses_api_key_auth():
     assert request.headers["Authorization"].startswith("Basic ")
     assert items[0]["id"] == 1001
     assert meta["total"] == 1
-
 
 @pytest.mark.asyncio
 @respx.mock

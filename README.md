@@ -179,3 +179,21 @@ This implements the private connector option with:
 No real customer data, passwords, API keys, or production store information are included. All sample records are fictional and use `example.test` addresses.
 
 The implementation deliberately keeps the agent surface read-only. Write operations can be added later behind explicit authorization, audit logging, and narrower credential scopes.
+
+## Screenshot
+
+### MCP Inspector connected	
+
+![alt text](images/mcp.png)
+
+### Six MCP tools
+
+![alt text](images/mcp_tools.png)
+
+### Postman products — 200	
+
+![alt text](images/postman1.png)
+
+![alt text](images/postman2.png)
+
+![alt text](images/postman3.png)

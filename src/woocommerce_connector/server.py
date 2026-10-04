@@ -1,27 +1,20 @@
 from __future__ import annotations
-
 from typing import Any
-
 from mcp.server.fastmcp import FastMCP
-
 from .client import WooCommerceClient
 from .config import Settings
 from .errors import ConnectorError
 
 mcp = FastMCP("woocommerce-private-connector")
 
-
 def _settings() -> Settings:
     return Settings()
-
 
 async def _paged(items, page, per_page, meta):
     return {"items": items, "page_info": {"page": page, "per_page": per_page, "total": meta.get("total"), "total_pages": meta.get("total_pages")}}
 
-
 def _error(exc: ConnectorError) -> dict[str, Any]:
     return {"error": str(exc)}
-
 
 @mcp.tool()
 async def list_orders(page: int = 1, per_page: int = 20, status: str | None = None) -> dict[str, Any]:
@@ -33,7 +26,6 @@ async def list_orders(page: int = 1, per_page: int = 20, status: str | None = No
     except ConnectorError as exc:
         return _error(exc)
 
-
 @mcp.tool()
 async def search_orders(query: str, page: int = 1, per_page: int = 20) -> dict[str, Any]:
     """Search WooCommerce orders by text such as order ID or customer email."""
@@ -44,7 +36,6 @@ async def search_orders(query: str, page: int = 1, per_page: int = 20) -> dict[s
     except ConnectorError as exc:
         return _error(exc)
 
-
 @mcp.tool()
 async def get_order(order_id: int) -> dict[str, Any]:
     """Get one WooCommerce order by ID."""
@@ -53,7 +44,6 @@ async def get_order(order_id: int) -> dict[str, Any]:
             return await client.get_order(order_id)
     except ConnectorError as exc:
         return _error(exc)
-
 
 @mcp.tool()
 async def list_products(page: int = 1, per_page: int = 20) -> dict[str, Any]:
@@ -65,7 +55,6 @@ async def list_products(page: int = 1, per_page: int = 20) -> dict[str, Any]:
     except ConnectorError as exc:
         return _error(exc)
 
-
 @mcp.tool()
 async def search_products(query: str, page: int = 1, per_page: int = 20) -> dict[str, Any]:
     """Search products by name or SKU."""
@@ -76,7 +65,6 @@ async def search_products(query: str, page: int = 1, per_page: int = 20) -> dict
     except ConnectorError as exc:
         return _error(exc)
 
-
 @mcp.tool()
 async def get_product(product_id: int) -> dict[str, Any]:
     """Get one WooCommerce product by ID."""
@@ -86,10 +74,8 @@ async def get_product(product_id: int) -> dict[str, Any]:
     except ConnectorError as exc:
         return _error(exc)
 
-
 def main() -> None:
     mcp.run()
-
 
 if __name__ == "__main__":
     main()
